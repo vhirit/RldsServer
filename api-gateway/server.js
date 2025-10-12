@@ -21,7 +21,7 @@ app.get('/health', (req, res) => {
 
 // Public routes (no authentication required)
 app.use('/auth', createProxyMiddleware({
-    target: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    target: process.env.AUTH_SERVICE_URL || 'http://localhost:3000',
     changeOrigin: true,
     onError: (err, req, res) => {
         errorHandler.handleGatewayError(err, req, res, 'auth-service');
@@ -30,7 +30,7 @@ app.use('/auth', createProxyMiddleware({
 
 // Protected routes
 app.use('/users', authMiddleware, createProxyMiddleware({
-    target: process.env.USER_SERVICE_URL || 'http://localhost:3005',
+    target: process.env.USER_SERVICE_URL || 'http://localhost:3000',
     changeOrigin: true,
     onError: (err, req, res) => {
         errorHandler.handleGatewayError(err, req, res, 'user-service');

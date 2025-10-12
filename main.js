@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 8080;
 
 // Import the Express app from app.js
 const authRouter = require('./auth-service/server');
-
+const doucntRouter = require('./document-service/server');
 // ========================
 // Middleware Setup
 // ========================
@@ -104,7 +104,7 @@ io.on('connection', (socket) => {
 // API Routes
 
 app.use('/api/user', authRouter);
-
+app.use('/api/document', doucntRouter);
 // ========================
 
 // Health check
