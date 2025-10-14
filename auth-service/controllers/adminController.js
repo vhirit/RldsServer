@@ -235,6 +235,139 @@ class AdminController {
             });
         }
     }
+
+    // Update user role (admin, contract, verifier, user)
+    async updateUserRole(req, res) {
+        try {
+            const { userId } = req.params;
+            const { role } = req.body;
+            const webSocketService = req.webSocketService;
+
+            console.log(`🔧 Admin ${req.user.id} updating user ${userId} role to ${role}`);
+
+            // Validate role
+            if (!['user', 'contract', 'admin', 'verifier'].includes(role)) {
+                console.log('❌ Invalid role provided:', role);
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid role. Must be: user, contract, admin, or verifier'
+                });
+            }
+
+            // Get current user to compare role and prevent self-demotion
+            const currentUser = await User.findById(userId);
+            if (!currentUser) {
+                console.log('❌ User not found:', userId);
+                return res.status(404).json({
+                    success: false,
+                    error: 'User not found'
+                });
+            }
+
+            // Prevent admin from demoting themselves (optional security measure)
+            if (userId === req.user.id && role !== 'admin') {
+                console.log('⚠️ Admin attempting to demote themselves');
+                return res.status(403).json({
+                    success: false,
+                    error: 'You cannot change your own admin role'
+                });
+            }
+
+            const oldRole = currentUser.role;
+            console.log(`📝 Updating user ${userId} from ${oldRole} to ${role}`);
+
+            // Update user role
+            const user = await User.findByIdAndUpdate(
+                userId,
+                { role },
+                { new: true, runValidators: true }
+            ).select('-password -resetPasswordToken -resetPasswordExpires');
+
+            if (!user) {
+                console.log('❌ Failed to update user role');
+                return res.status(404).json({
+                    success: false,
+                    error: 'User not found'
+                });
+            }
+
+            console.log(`✅ User role updated successfully: ${oldRole} → ${role}`);
+
+            // Send real-time notification via WebSocket
+            if (webSocketService) {
+                const roleChangeData = {
+                    type: 'role_updated',
+                    userId: userId,
+                    oldRole: oldRole,
+                    newRole: role,
+                    updatedBy: req.user.id,
+                    timestamp: new Date().toISOString(),
+                    message: `Your account role has been updated to ${role.toUpperCase()}`
+                };
+
+                // Notify the specific user
+                webSocketService.sendToUser(userId, 'role_change', roleChangeData);
+                
+                // Notify all admins about the role change
+                webSocketService.sendToAdmins('admin_notification', {
+                    type: 'role_change',
+                    message: `User ${user.firstName} ${user.lastName} role changed from ${oldRole} to ${role}`,
+                    adminId: req.user.id,
+                    targetUserId: userId,
+                    timestamp: new Date().toISOString()
+                });
+
+                console.log('📡 WebSocket notifications sent for role change');
+            }
+
+            // Send email notification (optional)
+            try {
+                const emailService = require('../services/emailService');
+                const roleNames = {
+                    user: 'Standard User',
+                    contract: 'Contract User', 
+                    admin: 'Administrator',
+                    verifier: 'Verifier'
+                };
+
+                await emailService.sendRoleChangeNotification({
+                    email: user.email,
+                    firstName: user.firstName,
+                    oldRole: roleNames[oldRole] || oldRole,
+                    newRole: roleNames[role] || role,
+                    changedBy: req.user.firstName + ' ' + req.user.lastName
+                });
+
+                console.log('📧 Role change email notification sent');
+            } catch (emailError) {
+                console.warn('⚠️ Failed to send role change email:', emailError.message);
+            }
+
+            res.status(200).json({
+                success: true,
+                message: `User role updated successfully from ${oldRole} to ${role}. Email notification sent to ${user.email}.`,
+                data: {
+                    user: {
+                        id: user._id,
+                        firstName: user.firstName,
+                        lastName: user.lastName,
+                        email: user.email,
+                        role: user.role,
+                        oldRole: oldRole,
+                        newRole: role,
+                        updatedAt: new Date().toISOString()
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('💥 Error in updateUserRole:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to update user role: ' + error.message
+            });
+        }
+    }
 }
 
 module.exports = new AdminController();

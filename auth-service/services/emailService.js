@@ -455,6 +455,153 @@ Thank you for being part of RLDS.`;
 
     return { subject, html, text };
   }
+
+  async sendRoleChangeNotification({ email, firstName, oldRole, newRole, changedBy }) {
+    try {
+      const { subject, html, text } = this.generateRoleChangeEmail({
+        firstName,
+        oldRole,
+        newRole,
+        changedBy
+      });
+
+      await this.sendEmail(email, subject, html, text);
+      console.log(`Role change notification sent to ${email}`);
+    } catch (error) {
+      console.error('Failed to send role change notification:', error);
+      throw error;
+    }
+  }
+
+  generateRoleChangeEmail({ firstName, oldRole, newRole, changedBy }) {
+    const subject = `RLDS Account - Role Updated to ${newRole}`;
+    
+    const roleDescriptions = {
+      'Standard User': 'Standard user access with basic features',
+      'Contract User': 'Contract user access with extended features',
+      'Administrator': 'Full administrative access to all system features',
+      'Verifier': 'Verification specialist access for document processing'
+    };
+
+    const roleColors = {
+      'Standard User': '#6B7280',
+      'Contract User': '#059669', 
+      'Administrator': '#7C3AED',
+      'Verifier': '#2563EB'
+    };
+
+    const html = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Role Updated - RLDS</title>
+            </head>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                    <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                        <!-- Header -->
+                        <div style="text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+                            <h1 style="color: #1f2937; margin: 0; font-size: 28px;">🔧 Role Updated</h1>
+                            <p style="color: #6b7280; margin: 10px 0 0 0; font-size: 16px;">Your RLDS account role has been changed</p>
+                        </div>
+
+                        <!-- Main Content -->
+                        <div style="margin-bottom: 30px;">
+                            <p style="font-size: 18px; margin-bottom: 20px;">Hello ${firstName},</p>
+                            
+                            <p style="font-size: 16px; margin-bottom: 20px;">
+                                Your account role has been updated by an administrator.
+                            </p>
+
+                            <!-- Role Change Details -->
+                            <div style="background-color: #f8fafc; padding: 25px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${roleColors[newRole] || '#2563EB'};">
+                                <h3 style="margin: 0 0 15px 0; color: #1f2937; font-size: 18px;">Role Change Details:</h3>
+                                
+                                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #374151; min-width: 120px;">Previous Role:</strong>
+                                    <span style="background-color: #e5e7eb; padding: 4px 12px; border-radius: 20px; font-size: 14px; color: #4b5563;">${oldRole}</span>
+                                </div>
+                                
+                                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                                    <strong style="color: #374151; min-width: 120px;">New Role:</strong>
+                                    <span style="background-color: ${roleColors[newRole] || '#2563EB'}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;">${newRole}</span>
+                                </div>
+                                
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="color: #374151;">Changed By:</strong> ${changedBy}
+                                </div>
+                                
+                                <div>
+                                    <strong style="color: #374151;">Date:</strong> ${new Date().toLocaleString()}
+                                </div>
+                            </div>
+
+                            <!-- Role Description -->
+                            <div style="background-color: #eff6ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+                                <h4 style="margin: 0 0 10px 0; color: #1e40af; font-size: 16px;">Your New Access Level:</h4>
+                                <p style="margin: 0; color: #1f2937; font-size: 14px;">${roleDescriptions[newRole] || 'Updated role access as configured by your administrator.'}</p>
+                            </div>
+
+                            <!-- Next Steps -->
+                            <div style="margin: 25px 0;">
+                                <h4 style="color: #1f2937; font-size: 16px; margin-bottom: 10px;">📋 Next Steps:</h4>
+                                <ul style="color: #4b5563; font-size: 14px; margin: 0; padding-left: 20px;">
+                                    <li style="margin-bottom: 5px;">Log out and log back in to see your new permissions</li>
+                                    <li style="margin-bottom: 5px;">Explore the features available to your new role</li>
+                                    <li style="margin-bottom: 5px;">Contact support if you have any questions about your new access level</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- CTA Button -->
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" 
+                               style="background-color: ${roleColors[newRole] || '#2563EB'}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold; display: inline-block; font-size: 16px;">
+                                Login to RLDS Dashboard
+                            </a>
+                        </div>
+
+                        <!-- Footer -->
+                        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+                            <p>If you believe this role change was made in error, please contact your administrator immediately.</p>
+                            <p>This is an automated message, please do not reply to this email.</p>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+    const text = `Your RLDS account role has been updated.
+
+Hello ${firstName},
+
+Your account role has been changed by an administrator.
+
+Role Change Details:
+- Previous Role: ${oldRole}
+- New Role: ${newRole}
+- Changed By: ${changedBy}
+- Date: ${new Date().toLocaleString()}
+
+Your New Access Level:
+${roleDescriptions[newRole] || 'Updated role access as configured by your administrator.'}
+
+Next Steps:
+1. Log out and log back in to see your new permissions
+2. Explore the features available to your new role
+3. Contact support if you have any questions about your new access level
+
+Login to RLDS: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/login
+
+If you believe this role change was made in error, please contact your administrator immediately.
+
+This is an automated message, please do not reply to this email.`;
+
+    return { subject, html, text };
+  }
 }
 
 module.exports = new EmailService();

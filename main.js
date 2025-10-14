@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 8080;
 
 // Import the Express app from app.js
 const authRouter = require('./auth-service/server');
-const doucntRouter = require('./document-service/server');
+const documentRouter = require('./document-service/server');
 // ========================
 // Middleware Setup
 // ========================
@@ -75,7 +75,7 @@ wss.on('connection', (ws) => {
 
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:3001", "http://localhost:3123", "http://localhost:3000"],
+        origin: ["http://localhost:3001", "http://localhost:3123", "http://localhost:3000","http://localhost:3003"],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -104,7 +104,7 @@ io.on('connection', (socket) => {
 // API Routes
 
 app.use('/api/user', authRouter);
-app.use('/api/document', doucntRouter);
+app.use('/api/document', documentRouter);
 // ========================
 
 // Health check
@@ -116,6 +116,7 @@ app.get('/api/health', (req, res) => {
         environment: process.env.NODE_ENV
     });
 });
+
 
 // WebSocket info endpoint
 app.get('/api/websocket-info', (req, res) => {

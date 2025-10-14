@@ -11,6 +11,7 @@ router.use(authorize('admin'));
 router.get('/users', adminController.getUsers);
 router.get('/users/:userId', adminController.getUserById);
 router.patch('/users/:userId/verification', adminController.updateUserVerification);
+router.patch('/users/:userId/role', adminController.updateUserRole);
 router.delete('/users/:userId', adminController.deleteUser); 
 
 module.exports = router;

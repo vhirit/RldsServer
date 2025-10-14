@@ -1,452 +1,321 @@
-const Document = require('../models/Document');
-const storageService = require('./storageService');
-const ocrService = require('./ocrService');
-const imageValidator = require('../utils/imageValidator');
-const path = require('path');
+const documentRepository = require('../repositories/documentRepository');
 
 class DocumentService {
-    // Upload Personal Documents (Step 1)
-    async uploadPersonalDocument({ userId, documentType, documentNumber, files }) {
-        try {
-            // Validate files
-            for (const file of files) {
-                await imageValidator.validateImage(file);
-            }
+  // Create or get user document
+  async createOrGetUserDocument(userId) {
+    try {
+      let document = await documentRepository.findByUserId(userId);
+      
+      if (!document) {
+        document = await documentRepository.createDocument({
+          userId,
+          overallStatus: 'INCOMPLETE'
+        });
+      }
 
-            // Create unique filename with document number
-            const fileName = this.generateFileName(documentType, documentNumber, files[0]);
-            
-            // Upload to storage
-            const storageResult = await storageService.uploadFiles(files, fileName);
-
-            // Find or create document record
-            let document = await Document.findOne({ userId });
-            if (!document) {
-                document = new Document({ userId });
-            }
-
-            // Add personal document
-            const personalDoc = {
-                documentType,
-                documentNumber,
-                fileUrl: storageResult[0].url,
-                fileName: storageResult[0].fileName,
-                fileSize: storageResult[0].size,
-                mimeType: storageResult[0].mimeType,
-                uploadedAt: new Date()
-            };
-
-            // Remove existing document of same type and add new one
-            document.personalDocuments = document.personalDocuments.filter(
-                doc => doc.documentType !== documentType
-            );
-            document.personalDocuments.push(personalDoc);
-
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Personal document upload failed: ${error.message}`);
-        }
+      return document;
+    } catch (error) {
+      throw new Error(`Document service error: ${error.message}`);
     }
+  }
 
-    // Upload Financial Documents (Step 2)
-    async uploadFinancialDocument({ userId, documentType, bankName, accountNumber, monthYear, files }) {
-        try {
-            // Validate files
-            for (const file of files) {
-                await imageValidator.validateImage(file);
-            }
-
-            // Create unique filename
-            const fileName = this.generateFileName(documentType, accountNumber || monthYear, files[0]);
-            
-            // Upload to storage
-            const storageResult = await storageService.uploadFiles(files, fileName);
-
-            // Find or create document record
-            let document = await Document.findOne({ userId });
-            if (!document) {
-                document = new Document({ userId });
-            }
-
-            // Add financial document
-            const financialDoc = {
-                documentType,
-                bankName,
-                accountNumber,
-                monthYear,
-                fileUrl: storageResult[0].url,
-                fileName: storageResult[0].fileName,
-                fileSize: storageResult[0].size,
-                mimeType: storageResult[0].mimeType,
-                uploadedAt: new Date()
-            };
-
-            document.financialDocuments.push(financialDoc);
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Financial document upload failed: ${error.message}`);
-        }
+  // Get document by ID
+  async getDocumentById(documentId) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
+      return document;
+    } catch (error) {
+      throw new Error(`Error getting document: ${error.message}`);
     }
+  }
 
-    // Upload Address Documents (Step 3)
-    async uploadAddressDocument({ userId, documentType, address, files }) {
-        try {
-            // Validate files
-            for (const file of files) {
-                await imageValidator.validateImage(file);
-            }
-
-            // Create unique filename
-            const fileName = this.generateFileName(documentType, 'address', files[0]);
-            
-            // Upload to storage
-            const storageResult = await storageService.uploadFiles(files, fileName);
-
-            // Find or create document record
-            let document = await Document.findOne({ userId });
-            if (!document) {
-                document = new Document({ userId });
-            }
-
-            // Add address document
-            const addressDoc = {
-                documentType,
-                address,
-                fileUrl: storageResult[0].url,
-                fileName: storageResult[0].fileName,
-                fileSize: storageResult[0].size,
-                mimeType: storageResult[0].mimeType,
-                uploadedAt: new Date()
-            };
-
-            document.addressDocuments.push(addressDoc);
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Address document upload failed: ${error.message}`);
-        }
+  // Get document by user ID
+  async getDocumentByUserId(userId) {
+    try {
+      const document = await documentRepository.findByUserId(userId);
+      if (!document) {
+        throw new Error('Document not found for user');
+      }
+      return document;
+    } catch (error) {
+      throw new Error(`Error getting user document: ${error.message}`);
     }
+  }
 
-    // Update Residence Verification (Step 4)
-    async updateResidenceVerification(documentId, residenceData, user) {
-        try {
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
+  // Add personal document
+  async addPersonalDocument(documentId, personalDocData) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
 
-            // Update residence verification with comprehensive fields
-            document.residenceVerification = {
-                ...document.residenceVerification,
-                ...residenceData,
-                verificationDate: new Date(),
-                verifiedBy: user.name || user.id,
-                updatedAt: new Date()
-            };
-
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Residence verification update failed: ${error.message}`);
-        }
+      return await documentRepository.addPersonalDocument(documentId, personalDocData);
+    } catch (error) {
+      throw new Error(`Error adding personal document: ${error.message}`);
     }
+  }
 
-    // Update Office Verification (Step 5)
-    async updateOfficeVerification(documentId, officeData, user) {
-        try {
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
+  // Add financial document
+  async addFinancialDocument(documentId, financialDocData) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
 
-            // Update office verification with comprehensive fields
-            document.officeVerification = {
-                ...document.officeVerification,
-                ...officeData,
-                verificationDate: new Date(),
-                verifiedBy: user.name || user.id,
-                updatedAt: new Date()
-            };
-
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Office verification update failed: ${error.message}`);
-        }
+      return await documentRepository.addFinancialDocument(documentId, financialDocData);
+    } catch (error) {
+      throw new Error(`Error adding financial document: ${error.message}`);
     }
+  }
 
-    // Update Business Verification (Step 6)
-    async updateBusinessVerification(documentId, businessData, user) {
-        try {
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
+  // Add address document
+  async addAddressDocument(documentId, addressDocData) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
 
-            // Update business verification with comprehensive fields
-            document.businessVerification = {
-                ...document.businessVerification,
-                ...businessData,
-                verificationDate: new Date(),
-                verifiedBy: user.name || user.id,
-                updatedAt: new Date()
-            };
-
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Business verification update failed: ${error.message}`);
-        }
+      return await documentRepository.addAddressDocument(documentId, addressDocData);
+    } catch (error) {
+      throw new Error(`Error adding address document: ${error.message}`);
     }
+  }
 
-    // ===== DOCUMENT DOWNLOAD SERVICES =====
+  // Update document status
+  async updateDocumentStatus(documentId, status) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
 
-    // Get File Information for Download
-    async getFileForDownload(documentId, fileId, userId, userRole) {
-        try {
-            // Find the document
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
-
-            // Check ownership (unless admin)
-            if (document.userId.toString() !== userId && userRole !== 'admin') {
-                throw new Error('Access denied');
-            }
-
-            // Find the specific file
-            const allDocuments = [
-                ...document.personalDocuments,
-                ...document.financialDocuments,
-                ...document.addressDocuments
-            ];
-
-            const targetFile = allDocuments.find(doc => doc._id.toString() === fileId);
-            if (!targetFile) {
-                throw new Error('File not found');
-            }
-
-            return {
-                document,
-                file: targetFile
-            };
-        } catch (error) {
-            throw new Error(`File retrieval failed: ${error.message}`);
-        }
+      return await documentRepository.updateDocumentStatus(documentId, status);
+    } catch (error) {
+      throw new Error(`Error updating document status: ${error.message}`);
     }
+  }
 
-    // Get All Files for Bulk Download
-    async getAllFilesForDownload(documentId, userId, userRole) {
-        try {
-            // Find the document
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
+  // Get document completion status
+  async getDocumentCompletion(documentId) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
 
-            // Check ownership (unless admin)
-            if (document.userId.toString() !== userId && userRole !== 'admin') {
-                throw new Error('Access denied');
-            }
+      const completionSteps = document.completionSteps;
+      const totalSteps = Object.keys(completionSteps).length;
+      const completedSteps = Object.values(completionSteps).filter(step => step).length;
+      const completionPercentage = Math.round((completedSteps / totalSteps) * 100);
 
-            // Collect all files
-            const allFiles = [
-                ...document.personalDocuments.map(doc => ({ ...doc.toObject(), category: 'personal' })),
-                ...document.financialDocuments.map(doc => ({ ...doc.toObject(), category: 'financial' })),
-                ...document.addressDocuments.map(doc => ({ ...doc.toObject(), category: 'address' }))
-            ];
-
-            return {
-                document,
-                files: allFiles
-            };
-        } catch (error) {
-            throw new Error(`Bulk file retrieval failed: ${error.message}`);
-        }
+      return {
+        completionSteps,
+        completionPercentage,
+        overallStatus: document.overallStatus
+      };
+    } catch (error) {
+      throw new Error(`Error getting document completion: ${error.message}`);
     }
+  }
 
-    // Get Files by Category for Download
-    async getFilesByCategoryForDownload(documentId, category, userId, userRole) {
-        try {
-            const validCategories = ['personal', 'financial', 'address'];
-            if (!validCategories.includes(category.toLowerCase())) {
-                throw new Error('Invalid category');
-            }
+  // Create or get verification for document (supports both single and array types)
+  async createOrGetVerification(documentId, verificationType, documentNumber) {
+    try {
+      const verificationService = require('./verificationService');
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
 
-            // Find the document
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
+      // Use the enhanced verification service method to handle arrays
+      const verificationData = {
+        verificationType: verificationType, // Can be array or single value
+        documentNumber,
+        createdBy: document.userId,
+        overallStatus: 'DRAFT',
+        documentId: documentId
+      };
 
-            // Check ownership (unless admin)
-            if (document.userId.toString() !== userId && userRole !== 'admin') {
-                throw new Error('Access denied');
-            }
+      const verification = await verificationService.createOrUpdateVerificationWithMultipleTypes(verificationData);
 
-            // Get files for the specific category
-            let categoryFiles = [];
-            const categoryLower = category.toLowerCase();
-            
-            if (categoryLower === 'personal') {
-                categoryFiles = document.personalDocuments;
-            } else if (categoryLower === 'financial') {
-                categoryFiles = document.financialDocuments;
-            } else if (categoryLower === 'address') {
-                categoryFiles = document.addressDocuments;
-            }
+      // Add verification reference to document if not already present
+      if (!document.verifications.includes(verification._id)) {
+        document.verifications.push(verification._id);
+        await document.save();
+      }
 
-            return {
-                document,
-                files: categoryFiles,
-                category: categoryLower
-            };
-        } catch (error) {
-            throw new Error(`Category file retrieval failed: ${error.message}`);
-        }
+      return verification;
+    } catch (error) {
+      throw new Error(`Error creating verification: ${error.message}`);
     }
+  }
 
-    // Get User Document Status
-    async getUserDocumentStatus(userId) {
-        try {
-            const document = await Document.findOne({ userId });
-            return document;
-        } catch (error) {
-            throw new Error(`Failed to fetch document status: ${error.message}`);
+  // Create multiple verifications for document (multiple types)
+  async createMultipleVerifications(documentId, verificationTypes, documentNumber) {
+    try {
+      const verificationRepository = require('../repositories/verificationRepository');
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
+
+      // Map frontend types to backend enum values
+      const verificationTypeMapping = {
+        'residence': 'RESIDENCE_VERIFICATION',
+        'office': 'OFFICE_VERIFICATION', 
+        'business': 'BUSINESS_VERIFICATION'
+      };
+
+      const createdVerifications = [];
+      const skippedVerifications = [];
+
+      // Create verification for each type
+      for (const frontendType of verificationTypes) {
+        const backendType = verificationTypeMapping[frontendType.toLowerCase()];
+        
+        if (!backendType) {
+          throw new Error(`Invalid verification type: ${frontendType}`);
         }
-    }
 
-    // Get All User Documents
-    async getUserDocuments(userId) {
-        try {
-            return await Document.findOne({ userId });
-        } catch (error) {
-            throw new Error(`Failed to fetch documents: ${error.message}`);
+        // Check if verification with this document number and type already exists
+        let existingVerification = await verificationRepository.findByDocumentNumber(documentNumber, backendType);
+        
+        if (existingVerification) {
+          skippedVerifications.push({
+            type: frontendType,
+            reason: 'Already exists',
+            verification: existingVerification
+          });
+          continue;
         }
-    }
 
-    // Delete Specific Document
-    async deleteDocument(userId, documentId, documentType, category) {
         try {
-            const document = await Document.findOne({ userId });
-            if (!document) {
-                throw new Error('Document not found');
-            }
+          // Create new verification
+          let verification = await verificationRepository.createVerification({
+            verificationType: backendType,
+            documentNumber,
+            createdBy: document.userId,
+            overallStatus: 'DRAFT'
+          });
 
-            let documentToDelete = null;
-            let arrayField = '';
+          // Add verification reference to document if not already present
+          if (!document.verifications.includes(verification._id)) {
+            document.verifications.push(verification._id);
+          }
 
-            // Find the document in the appropriate array
-            switch (category) {
-                case 'personal':
-                    arrayField = 'personalDocuments';
-                    documentToDelete = document.personalDocuments.id(documentId);
-                    break;
-                case 'financial':
-                    arrayField = 'financialDocuments';
-                    documentToDelete = document.financialDocuments.id(documentId);
-                    break;
-                case 'address':
-                    arrayField = 'addressDocuments';
-                    documentToDelete = document.addressDocuments.id(documentId);
-                    break;
-            }
+          createdVerifications.push({
+            type: frontendType,
+            backendType: backendType,
+            verification: verification
+          });
 
-            if (!documentToDelete) {
-                throw new Error('Document not found in specified category');
-            }
-
-            // Delete file from storage
-            await storageService.deleteFiles([{
-                filePath: documentToDelete.fileUrl,
-                fileName: documentToDelete.fileName
-            }]);
-
-            // Remove from document array
-            document[arrayField].pull(documentId);
-            await document.save();
-
-            return document;
-        } catch (error) {
-            throw new Error(`Document deletion failed: ${error.message}`);
-        }
-    }
-
-    // Admin: Get Pending Verifications
-    async getPendingVerifications({ page, limit }) {
-        try {
-            const query = {
-                $or: [
-                    { 'homeAddressVerification.verificationStatus': 'PENDING' },
-                    { 'officeAddressVerification.verificationStatus': 'PENDING' }
-                ]
-            };
-
-            const documents = await Document.find(query)
-                .populate('userId', 'firstName lastName email')
-                .sort({ createdAt: -1 })
-                .skip((page - 1) * limit)
-                .limit(limit);
-
-            const total = await Document.countDocuments(query);
-
-            return {
-                verifications: documents,
-                pagination: {
-                    page,
-                    limit,
-                    total,
-                    pages: Math.ceil(total / limit)
-                }
-            };
-        } catch (error) {
-            throw new Error(`Failed to fetch pending verifications: ${error.message}`);
-        }
-    }
-
-    // Admin: Update Verification Status
-    async updateVerificationStatus(documentId, verificationType, status, notes, verifierId) {
-        try {
-            const document = await Document.findById(documentId);
-            if (!document) {
-                throw new Error('Document not found');
-            }
-
-            const verificationField = verificationType === 'home' 
-                ? 'homeAddressVerification' 
-                : 'officeAddressVerification';
-
-            document[verificationField].verificationStatus = status;
-            document[verificationField].verifierNotes = notes;
-            document[verificationField].verificationDate = new Date();
-            document[verificationField].updatedAt = new Date();
-
-            // Add to verification history
-            document.verificationHistory.push({
-                action: `${verificationType}_verification_${status.toLowerCase()}`,
-                performedBy: verifierId,
-                notes: notes,
-                previousStatus: document[verificationField].verificationStatus,
-                newStatus: status,
-                timestamp: new Date()
+        } catch (verificationError) {
+          // Handle duplicate key error - this should only occur for the compound key (documentNumber + verificationType)
+          if (verificationError.message.includes('duplicate key') || verificationError.message.includes('E11000')) {
+            // This verification type with this document number already exists, skip it
+            skippedVerifications.push({
+              type: frontendType,
+              reason: 'Duplicate verification type for this document number',
+              error: verificationError.message
             });
-
-            await document.save();
-            return document;
-        } catch (error) {
-            throw new Error(`Verification status update failed: ${error.message}`);
+            continue;
+          }
+          throw verificationError;
         }
-    }
+      }
 
-    // Generate unique filename with document number
-    generateFileName(documentType, documentNumber, file) {
-        const timestamp = Date.now();
-        const extension = path.extname(file.originalname);
-        return `${documentType}_${documentNumber}_${timestamp}${extension}`;
+      // Save document with new verification references
+      await document.save();
+
+      return {
+        documentId: document._id,
+        documentNumber,
+        createdVerifications,
+        skippedVerifications,
+        totalCreated: createdVerifications.length,
+        totalSkipped: skippedVerifications.length
+      };
+
+    } catch (error) {
+      throw new Error(`Error creating multiple verifications: ${error.message}`);
     }
+  }
+
+  // Update verification step
+  async updateVerificationStep(documentId, verificationType, documentNumber, stepName, stepData) {
+    try {
+      const verificationRepository = require('../repositories/verificationRepository');
+      
+      // Get or create verification
+      let verification = await this.createOrGetVerification(documentId, verificationType, documentNumber);
+
+      // Update specific step data
+      const updateData = {};
+      
+      if (stepName === 'administrativeDetails') {
+        updateData.administrativeDetails = { ...verification.administrativeDetails, ...stepData };
+      } else if (verificationType === 'RESIDENCE_VERIFICATION') {
+        updateData[`residenceVerification.${stepName}`] = { 
+          ...verification.residenceVerification?.[stepName], 
+          ...stepData 
+        };
+      } else if (verificationType === 'OFFICE_VERIFICATION') {
+        updateData[`officeVerification.${stepName}`] = { 
+          ...verification.officeVerification?.[stepName], 
+          ...stepData 
+        };
+      } else if (verificationType === 'BUSINESS_VERIFICATION') {
+        updateData[`businessVerification.${stepName}`] = { 
+          ...verification.businessVerification?.[stepName], 
+          ...stepData 
+        };
+      }
+
+      // Update verification
+      verification = await verificationRepository.updateVerification(verification._id, updateData);
+
+      return verification;
+    } catch (error) {
+      throw new Error(`Error updating verification step: ${error.message}`);
+    }
+  }
+
+  // Get verification by document number
+  async getVerificationByDocumentNumber(documentNumber, verificationType = null) {
+    try {
+      const verificationRepository = require('../repositories/verificationRepository');
+      const verification = await verificationRepository.findByDocumentNumber(documentNumber, verificationType);
+      
+      if (!verification) {
+        throw new Error('Verification not found');
+      }
+
+      return verification;
+    } catch (error) {
+      throw new Error(`Error getting verification: ${error.message}`);
+    }
+  }
+
+  // Get all verifications for a document
+  async getDocumentVerifications(documentId) {
+    try {
+      const document = await documentRepository.findById(documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
+
+      await document.populate('verifications');
+      return document.verifications;
+    } catch (error) {
+      throw new Error(`Error getting document verifications: ${error.message}`);
+    }
+  }
 }
 
 module.exports = new DocumentService();

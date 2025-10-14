@@ -3,9 +3,21 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const documentRoutes = require('./routes/documents');
+// const dbManager = require('./config/db');
+
 const dbManager = require('./config/db');
 
+// Load models to register them with Mongoose
+const models = require('./models');
+console.log('Models loaded:', Object.keys(models));
+//
 const app = express();
+
+// dbManager().then(() => {
+//   console.log('Database connected, starting server...');
+// });
+
+
 const PORT = process.env.DOCUMENT_SERVICE_PORT || 3002;
 
 // Security middleware
@@ -14,7 +26,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3001','http://localhost:3003'],
   credentials: true
 }));
 
@@ -29,19 +41,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Database connection middleware
-app.use(async (req, res, next) => {
-  try {
-    if (!dbManager.isConnected('document-service')) {
-      await dbManager.connectServiceDB(
-        'document-service', 
-        process.env.DOCUMENT_SERVICE_DB || 'mongodb://localhost:27017/document-service'
-      );
-    }
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
+// app.use(async (req, res, next) => {
+//   try {
+//     if (!dbManager.isConnected('document-service')) {
+//       await dbManager.connectServiceDB(
+//         'document-service', 
+//         process.env.DOCUMENT_SERVICE_DB || 'mongodb://localhost:27017/document-service'
+//       );
+//     }
+//     next();
+//   } catch (error) {
+//     next(error);
+//   }
+// });
 
 // Routes
 app.use('/documents', documentRoutes);
