@@ -2,7 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const http = require('http');
+const socketIO = require('socket.io');
 const documentRoutes = require('./routes/documents');
+const branchRoutes = require('./routes/branchRoutes');
+const sourcePersonRoutes = require('./routes/sourcePersonRoutes');
+const DocumentNumberService = require('./services/documentNumberService');
 // const dbManager = require('./config/db');
 
 const dbManager = require('./config/db');
@@ -12,6 +17,14 @@ const models = require('./models');
 console.log('Models loaded:', Object.keys(models));
 //
 const app = express();
+const server = http.createServer(app);
+const io = socketIO(server, {
+  cors: {
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3001', 'http://localhost:3003'],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
 
 // dbManager().then(() => {
 //   console.log('Database connected, starting server...');
@@ -55,9 +68,77 @@ app.use(express.urlencoded({ extended: true }));
 //   }
 // });
 
+// WebSocket connection handling
+io.on('connection', (socket) => {
+  console.log('📡 Client connected to document-service WebSocket:', socket.id);
+
+  // Send current document number when client connects
+  socket.on('requestDocumentNumber', async () => {
+    try {
+      const currentDocumentNumber = await DocumentNumberService.getCurrentDocumentNumber();
+      socket.emit('documentNumber', { 
+        documentNumber: currentDocumentNumber,
+        timestamp: new Date().toISOString()
+      });
+      console.log('📄 Sent document number:', currentDocumentNumber, 'to client:', socket.id);
+    } catch (error) {
+      console.error('❌ Error sending document number:', error);
+      const defaultNumber = DocumentNumberService.generateDefaultDocumentNumber();
+      socket.emit('documentNumber', { 
+        documentNumber: defaultNumber,
+        timestamp: new Date().toISOString(),
+        isDefault: true
+      });
+    }
+  });
+
+  // Generate and broadcast new document number
+  socket.on('generateNewDocumentNumber', async () => {
+    try {
+      const newDocumentNumber = await DocumentNumberService.generateDocumentNumber();
+      
+      // Broadcast to all connected clients
+      io.emit('documentNumber', { 
+        documentNumber: newDocumentNumber,
+        timestamp: new Date().toISOString(),
+        isNew: true
+      });
+      
+      console.log('🔄 Generated and broadcasted new document number:', newDocumentNumber);
+    } catch (error) {
+      console.error('❌ Error generating new document number:', error);
+      socket.emit('error', { message: 'Failed to generate document number' });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('📡 Client disconnected from document-service WebSocket:', socket.id);
+  });
+});
+
+// Broadcast document number updates to all clients
+const broadcastDocumentNumber = async () => {
+  try {
+    const currentDocumentNumber = await DocumentNumberService.getCurrentDocumentNumber();
+    io.emit('documentNumber', { 
+      documentNumber: currentDocumentNumber,
+      timestamp: new Date().toISOString(),
+      isBroadcast: true
+    });
+    console.log('📢 Broadcasted current document number:', currentDocumentNumber);
+  } catch (error) {
+    console.error('❌ Error broadcasting document number:', error);
+  }
+};
+
+// Make broadcastDocumentNumber available globally for use in routes
+app.locals.broadcastDocumentNumber = broadcastDocumentNumber;
+app.locals.io = io;
+
 // Routes
 app.use('/documents', documentRoutes);
-
+app.use('/documentsbranches', branchRoutes);
+app.use('/sourcepersons', sourcePersonRoutes);
 // Enhanced health check
 app.get('/health', async (req, res) => {
   try {
@@ -113,9 +194,10 @@ async function startServer() {
       process.env.DOCUMENT_SERVICE_DB || 'mongodb://localhost:27017/document-service'
     );
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`📄 Document Service running on port ${PORT}`);
       console.log(`🏥 Health check available at http://localhost:${PORT}/health`);
+      console.log(`📡 WebSocket server ready for document number broadcasting`);
     });
   } catch (error) {
     console.error('❌ Failed to start Document Service:', error);

@@ -1,6 +1,7 @@
+// models/Verification.js
 const mongoose = require('mongoose');
+const DocumentCounter = require('./DocumentCounter');
 
-// Verification Schema
 const verificationSchema = new mongoose.Schema({
   // Verification Type and Document Number
   verificationType: [{
@@ -9,32 +10,32 @@ const verificationSchema = new mongoose.Schema({
   }],
   documentNumber: {
     type: String,
-    required: true
-    // Removed unique: true - uniqueness is now enforced by compound index
+    required: true,
+    unique: true
   },
 
   // Common Administrative Details (initially optional, required later)
   administrativeDetails: {
     dateOfReceipt: {
       type: Date,
-      required: false // Make optional for initial creation
+      required: false
     },
     dateOfReport: Date,
     referenceNo: {
       type: String,
-      required: false // Make optional for initial creation
+      required: false
     },
     branchName: {
       type: String,
-      required: false // Make optional for initial creation
+      required: false
     },
     typeOfLoan: {
       type: String,
-      required: false // Make optional for initial creation
+      required: false
     },
     applicantName: {
       type: String,
-      required: false // Make optional for initial creation
+      required: false
     }
   },
 
@@ -328,7 +329,7 @@ const verificationSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false // Make optional for initial creation, will be set automatically
+    required: false
   },
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -341,11 +342,33 @@ const verificationSchema = new mongoose.Schema({
 });
 
 // Indexes for better performance
-verificationSchema.index({ documentNumber: 1 }, { unique: true }); // Unique document number (one verification per document)
+verificationSchema.index({ documentNumber: 1 }, { unique: true });
 verificationSchema.index({ verificationType: 1 });
 verificationSchema.index({ overallStatus: 1 });
 verificationSchema.index({ createdBy: 1 });
 verificationSchema.index({ 'administrativeDetails.referenceNo': 1 });
+
+// Pre-save middleware to generate document number
+verificationSchema.pre('save', async function(next) {
+  if (this.isNew && !this.documentNumber) {
+    try {
+      // Get next sequence number (this will increment)
+      const counter = await DocumentCounter.getNextSequence();
+      const currentDate = DocumentCounter.getCurrentDate();
+      
+      // Format: 001/15-10-2025, 002/15-10-2025, etc.
+      this.documentNumber = `${counter.sequence_value.toString().padStart(3, '0')}/${currentDate}`;
+      this.documentDate = currentDate;
+      
+      next();
+    } catch (error) {
+      console.error('Error generating document number:', error);
+      next(error);
+    }
+  } else {
+    next();
+  }
+});
 
 // Method to find all verifications by document number (across all types)
 verificationSchema.statics.findAllByDocumentNumber = function(documentNumber) {
@@ -363,7 +386,6 @@ verificationSchema.virtual('completionPercentage').get(function() {
 verificationSchema.methods.getVerificationData = function() {
   const data = {};
   
-  // Handle both array and single verification types
   const types = Array.isArray(this.verificationType) ? this.verificationType : [this.verificationType];
   
   types.forEach(type => {
@@ -387,20 +409,16 @@ verificationSchema.methods.getVerificationData = function() {
 verificationSchema.methods.updateCompletionSteps = function() {
   const verificationData = this.getVerificationData();
   
-  // Update steps based on data presence
   this.completionSteps.administrativeDetails = !!(this.administrativeDetails && this.administrativeDetails.dateOfReceipt && this.administrativeDetails.referenceNo);
   
-  // Handle both array and single verification types
   const types = Array.isArray(this.verificationType) ? this.verificationType : [this.verificationType];
   
-  // Initialize steps as incomplete
   this.completionSteps.addressInformation = false;
   this.completionSteps.propertyDetails = false;
   this.completionSteps.personalInformation = false;
   this.completionSteps.verificationStatus = false;
   this.completionSteps.commentsAuthorization = false;
   
-  // Check completion for each verification type
   types.forEach(type => {
     if (type === 'RESIDENCE_VERIFICATION' && verificationData.residenceVerification) {
       this.completionSteps.addressInformation = this.completionSteps.addressInformation || !!(verificationData.residenceVerification.addressInformation?.presentAddress);
@@ -430,7 +448,6 @@ verificationSchema.methods.updateCompletionSteps = function() {
 verificationSchema.pre('save', function(next) {
   this.updateCompletionSteps();
   
-  // Update overall status based on completion
   const percentage = this.completionPercentage;
   if (percentage === 100) {
     this.overallStatus = 'SUBMITTED';
@@ -448,11 +465,6 @@ verificationSchema.statics.findByDocumentNumber = function(documentNumber, verif
     query.verificationType = verificationType;
   }
   return this.findOne(query);
-};
-
-// Static method to find all verifications by document number (across all types)
-verificationSchema.statics.findAllByDocumentNumber = function(documentNumber) {
-  return this.find({ documentNumber });
 };
 
 module.exports = mongoose.model('Verification', verificationSchema);

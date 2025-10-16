@@ -1,11 +1,23 @@
+// models/Document.js
 const mongoose = require('mongoose');
 
-// Main Document Registration Schema
 const documentSchema = new mongoose.Schema({
+  // Document Reference Number (for WebSocket broadcasting)
+  documentReferenceNumber: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+
+  // Selected Verification Types
+  selectedVerificationTypes: [{
+    type: String,
+    enum: ['residence', 'office', 'business']
+  }],
+  
   // User Information
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
     ref: 'User'
   },
   
@@ -62,7 +74,7 @@ const documentSchema = new mongoose.Schema({
     documentNumber: String,
     bankName: String,
     accountNumber: String,
-    monthYear: String, // For salary slips, bank statements
+    monthYear: String,
     fileUrl: {
       type: String,
       required: true
@@ -216,7 +228,8 @@ const documentSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes for better performance
+// Indexes
+documentSchema.index({ documentReferenceNumber: 1 });
 documentSchema.index({ userId: 1 });
 documentSchema.index({ overallStatus: 1 });
 documentSchema.index({ 'personalDocuments.documentType': 1 });
@@ -262,7 +275,6 @@ documentSchema.methods.isDocumentUploadComplete = function() {
 documentSchema.methods.isVerificationComplete = function() {
   if (this.verifications.length === 0) return false;
   
-  // Check if all verifications have status 'VERIFIED'
   return this.verifications.every(verification => 
     verification.verificationStatus?.status === 'VERIFIED'
   );
@@ -272,7 +284,6 @@ documentSchema.methods.isVerificationComplete = function() {
 documentSchema.methods.addVerificationHistory = function(historyData) {
   this.verificationHistory.push(historyData);
   
-  // Keep only last 50 history entries
   if (this.verificationHistory.length > 50) {
     this.verificationHistory = this.verificationHistory.slice(-50);
   }
@@ -342,19 +353,14 @@ documentSchema.methods.updateMetadata = function() {
 
 // Pre-save middleware to update completion steps and progress
 documentSchema.pre('save', function(next) {
-  // Update completion steps based on data
   this.completionSteps.personalDocuments = this.personalDocuments.length > 0;
   this.completionSteps.financialDocuments = this.financialDocuments.length > 0;
   this.completionSteps.addressDocuments = this.addressDocuments.length > 0;
   this.completionSteps.verifications = this.verifications.length > 0;
   
-  // Update verification progress
   this.updateVerificationProgress();
-  
-  // Update metadata
   this.updateMetadata();
   
-  // Update overall status based on completion and verification
   const completionPct = this.completionPercentage;
   const verificationPct = this.verificationProgress.overallPercentage;
   
@@ -368,13 +374,12 @@ documentSchema.pre('save', function(next) {
     this.overallStatus = 'INCOMPLETE';
   }
   
-  // Set review dates
   if (!this.reviewDate && this.overallStatus === 'PENDING') {
     this.reviewDate = new Date();
   }
   
   if (!this.nextReviewDate && this.overallStatus === 'UNDER_REVIEW') {
-    this.nextReviewDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    this.nextReviewDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }
   
   next();
